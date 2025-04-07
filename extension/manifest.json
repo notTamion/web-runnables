@@ -1,0 +1,19 @@
+{
+  "name": "Web Runnables",
+  "description": "Run local commands from your Browser",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "content_scripts": [
+    {
+      "js": ["scripts/hotkeys.js"],
+      "matches": ["http://*/*", "https://*/*"],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
