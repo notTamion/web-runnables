@@ -1,7 +1,5 @@
-use std::env::current_exe;
 use std::io::{stderr, stdout, Error};
 use std::process::Command;
-use serde_json::json;
 
 pub fn create_registry(manifest_path: String) -> Result<(), Error> {
     Command::new("pwsh")

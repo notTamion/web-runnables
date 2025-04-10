@@ -1,12 +1,10 @@
 use std::error::Error;
-use std::{fs, io};
-use std::borrow::Cow;
-use std::env::{args, current_exe};
-use std::io::{stderr, stdin, stdout, BufRead, Read, Write};
-use std::process::Command;
-use serde_json::json;
-use crate::config::{load_config, save_config, Runnable};
-use crate::registry::create_registry;
+use std::io;
+use std::env::args;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
+use serde_json::{json, Value};
+use crate::config::{load_config, Runnable};
 use crate::setup::setup;
 
 mod config;
@@ -14,64 +12,41 @@ mod registry;
 mod setup;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let config = load_config().unwrap();
+    let config = load_config()?;
     if args().find(|arg| arg.contains("chrome-extension")).is_none() {
         setup()?;
         return Ok(());
     }
+    write_output(serde_json::to_string_pretty(&json!({
+        "type": "config",
+        "value": config,
+    })).unwrap().as_str()).expect("FAILED TO SERIALIZE CONFIG");
     loop {
-        let msg = read_input()?;
-        write_output(&String::from_utf8_lossy(&*msg))?;
-    }
-
-    loop {
-        for line in stdin().lock().lines() {
-            let line = line?;
-            let args: Vec<&str> = line.split(" ").collect();
-            match args[0] {
-                "run" => {
-                    let name = args[1];
-                    let command = config.runnables.iter().find(|r| r.name == name);
-                    match command {
-                        Some(runnable) => {
-                            println!("Yes");
-                            let output = Command::new("cmd")
-                                .arg("/c")
-                                .arg(&runnable.command)
-                                .stdout(stdout())
-                                .spawn();
-                        }
-                        None => {
-                            eprintln!("Runnable not found: {}", name);
-                        }
-                    }
-                }
-                "exit" => {
-                    return Ok(())
-                }
-                _ => {}
+        let message = serde_json::from_str::<Value>(&*String::from_utf8_lossy(&*read_input()?).to_string())?;
+        log(message.get("type").unwrap().as_str().unwrap().to_string()).expect("TODO: panic message");
+        match message["type"].as_str().unwrap() {
+            "run" => {
+                let id = message["id"].as_u64().unwrap() as usize;
+                let runnable= &config.runnables.get(id);
+                let runnable = runnable.unwrap();
+                let mut process = Command::new("pwsh")
+                    .arg("-CommandWithArgs")
+                    .arg(&runnable.command)
+                    .output()?;
+                log(String::from_utf8_lossy(&*process.stdout).to_string()).expect("TODO: panic message");
             }
+            _ => {}
         }
     }
 }
 
-pub fn create_manifest() -> Result<String, std::io::Error> {
-    let binding = current_exe()?;
-    let current_exe_str = binding.to_str().unwrap();
-    let manifest = json!({
-        "name": "de.tamion.web_runnables",
-        "description": "Run local commands from your Browser",
-        "path": current_exe_str,
-        "type": "stdio",
-        "allowed_origins": ["chrome-extension://bnbdcflpeaebhnfmkpaelaihgodloiip/"]
-    });
-    let manifest_path = current_exe()?.with_file_name("manifest.json");
-    if manifest_path.exists() {
-        return Ok("".to_string())
-    }
-    let manifest_file = std::fs::File::create(&manifest_path)?;
-    serde_json::to_writer_pretty(manifest_file, &manifest)?;
-    Ok(manifest_path.to_str().unwrap().to_string())
+pub fn log(msg: String) -> io::Result<()> {
+    Ok(write_output(serde_json::to_string_pretty(
+        &json!({
+            "type": "log",
+            "value": msg,
+        })
+    )?.as_str()).expect("FAILED TO SERIALIZE LOG"))
 }
 
 pub fn write_output(msg: &str) -> io::Result<()> {
