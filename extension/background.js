@@ -1,10 +1,10 @@
 let config;
 let port = chrome.runtime.connectNative('de.tamion.web_runnables');
 port.onMessage.addListener(function (msg) {
-    console.log(msg)
     switch (msg.type) {
         case "config": {
             config = msg.value;
+            console.log(config)
             break;
         }
         case "log": {
@@ -40,13 +40,31 @@ chrome.runtime.onMessage.addListener(
 
         for (let i = 0; i < config.runnables.length; i++) {
             let runnable = config.runnables[i];
-            if (runnable.hotkey.toUpperCase().replace(/\s+/g, "") === keysPressed.toUpperCase()) {
-                console.log("Sent")
-                port.postMessage({
-                    "type": "run",
-                    "id": i,
-                });
+            let match = sender.tab.url.match(runnable.regex);
+            if (match === null) {
+                continue;
             }
+            if (runnable.hotkey.toUpperCase().replace(/\s+/g, "") !== keysPressed.toUpperCase()) {
+                continue;
+            }
+
+            console.log(match.slice(1)[0]);
+            chrome.userScripts.execute({
+                    js : [{ code : "result = " + match.slice(1) + ";" + runnable.arg_parser }],
+                    target: { tabId: sender.tab.id }
+                },
+                (result) => {
+                    console.log(result)
+                    port.postMessage({
+                        "type": "run",
+                        "id": i,
+                        "args": result[0].result
+                    });
+                });
         }
     }
 );
+
+function evalArgParser(runnable) {
+    eval(runnable.arg_parser);
+}

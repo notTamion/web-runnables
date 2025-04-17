@@ -3,15 +3,17 @@ use std::io;
 use std::env::args;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use regex::Regex;
 use serde_json::{json, Value};
-use crate::config::{load_config, Runnable};
+use crate::config::load_config;
 use crate::setup::setup;
 
 mod config;
 mod registry;
 mod setup;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let config = load_config()?;
     if args().find(|arg| arg.contains("chrome-extension")).is_none() {
         setup()?;
@@ -23,21 +25,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     })).unwrap().as_str()).expect("FAILED TO SERIALIZE CONFIG");
     loop {
         let message = serde_json::from_str::<Value>(&*String::from_utf8_lossy(&*read_input()?).to_string())?;
-        log(message.get("type").unwrap().as_str().unwrap().to_string()).expect("TODO: panic message");
         match message["type"].as_str().unwrap() {
             "run" => {
                 let id = message["id"].as_u64().unwrap() as usize;
-                let runnable= &config.runnables.get(id);
-                let runnable = runnable.unwrap();
-                let mut process = Command::new("pwsh")
+                let runnable= config.runnables.get(id).unwrap().clone();
+                let args = message["args"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect::<Vec<&str>>();
+                let command = format_string(runnable.command.clone().as_str(), args);
+                let process = Command::new("pwsh")
                     .arg("-CommandWithArgs")
-                    .arg(&runnable.command)
-                    .output()?;
-                log(String::from_utf8_lossy(&*process.stdout).to_string()).expect("TODO: panic message");
+                    .arg(command)
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                tokio::spawn(async move {
+                    let mut output = String::new();
+                    process.stdout.unwrap().read_to_string(&mut output).unwrap();
+                    log(output).expect("TODO: panic message");
+                });
             }
             _ => {}
         }
     }
+}
+
+fn format_string(template: &str, replacements: Vec<&str>) -> String {
+    let re = Regex::new(r"\{(\d+)}").unwrap();
+
+    re.replace_all(template, |caps: &regex::Captures| {
+        let index: usize = caps[1].parse().unwrap();
+
+        replacements.get(index).unwrap_or(&"").to_string()
+    })
+        .to_string()
 }
 
 pub fn log(msg: String) -> io::Result<()> {

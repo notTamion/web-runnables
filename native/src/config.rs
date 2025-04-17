@@ -8,8 +8,8 @@ pub fn load_config() -> Result<Config, Error> {
     let config_file = std::fs::File::open(path);
     match config_file {
         Ok(file) => {
-            let mut config = serde_json::from_reader(file)?;
-            merge(&mut config, default_config());
+            let mut config = default_config();
+            merge(&mut config, serde_json::from_reader(file)?);
             let config = serde_json::from_value::<Config>(config)?;
             save_config(&config);
             Ok(config)
@@ -60,10 +60,12 @@ pub struct Config {
     pub runnables: Vec<Runnable>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Runnable {
     pub name: String,
     pub regex: String,
+    #[serde(default)]
+    pub arg_parser: String,
     pub hotkey: String,
     pub command: String,
 }
