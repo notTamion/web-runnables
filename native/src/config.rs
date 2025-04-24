@@ -1,21 +1,17 @@
 use std::env::current_exe;
-use std::io::Error;
+use std::error::Error;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
-pub fn load_config() -> Result<Config, Error> {
-    let path = current_exe()?.with_file_name("config.json");
+pub fn load_config() -> Result<Config, Box<dyn Error>> {
+    let path = current_exe()?.with_file_name("config.yml");
     let config_file = std::fs::File::open(path);
     match config_file {
         Ok(file) => {
-            let mut config = default_config();
-            merge(&mut config, serde_json::from_reader(file)?);
-            let config = serde_json::from_value::<Config>(config)?;
-            save_config(&config);
+            let config = serde_yaml::from_reader(file)?;
             Ok(config)
         }
         Err(_) => {
-            let config = serde_json::from_value::<Config>(default_config())?;
+            let config = default_config();
             save_config(&config);
             Ok(config)
         }
@@ -23,35 +19,20 @@ pub fn load_config() -> Result<Config, Error> {
 }
 
 pub fn save_config(config: &Config) {
-    let path = current_exe().unwrap().with_file_name("config.json");
+    let path = current_exe().unwrap().with_file_name("config.yml");
     let file = std::fs::File::create(path).unwrap();
-    serde_json::to_writer_pretty(file, &config).unwrap();
+    serde_yaml::to_writer(file, &config).unwrap();
 }
 
-fn merge(a: &mut Value, b: Value) {
-    match (a, b) {
-        (a @ &mut Value::Object(_), Value::Object(b)) => {
-            let a = a.as_object_mut().unwrap();
-            for (k, v) in b {
-                merge(a.entry(k).or_insert(Value::Null), v);
-            }
-        }
-        (a, b) => *a = b,
-    }
-}
-
-fn default_config() -> Value {
-    json!({
-        "require_special": true,
-        "runnables": [
-            {
-                "name": "hello",
-                "regex": "*",
-                "hotkey": "Ctrl+Shift+E",
-                "command": "echo Hello World"
-            }
-        ]
-    })
+fn default_config() -> Config {
+    serde_yaml::from_str::<Config>(r#"
+    require_special: false
+    runnables:
+      - name: "Example"
+        regex: ".*"
+        hotkey: "Ctrl+Shift+E"
+        command: "echo Hello, World!"
+    "#).unwrap()
 }
 
 #[derive(Serialize, Deserialize)]

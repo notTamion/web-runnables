@@ -48,9 +48,9 @@ chrome.runtime.onMessage.addListener(
                 continue;
             }
 
-            console.log(match.slice(1)[0]);
+            console.log("result = " + JSON.stringify(match) + ";" + runnable.arg_parser)
             chrome.userScripts.execute({
-                    js : [{ code : "result = " + match.slice(1) + ";" + runnable.arg_parser }],
+                    js : [{ code : "result = " + JSON.stringify(match) + ";" + runnable.arg_parser }],
                     target: { tabId: sender.tab.id }
                 },
                 (result) => {
